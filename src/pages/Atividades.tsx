@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Search, Filter } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Filter, Upload } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { Atividade, DIMENSOES, NATUREZAS_DESPESA } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
+import { CsvImportDialog } from '@/components/CsvImportDialog';
+import { toast } from 'sonner';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -57,6 +59,7 @@ export default function Atividades() {
   const [filterDimensao, setFilterDimensao] = useState('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [selectedAtividade, setSelectedAtividade] = useState<Atividade | null>(null);
   const [formData, setFormData] = useState(initialFormState);
 
@@ -112,6 +115,33 @@ export default function Atividades() {
     setIsDeleteDialogOpen(true);
   };
 
+  const handleCsvImport = (data: Record<string, string>[]) => {
+    let importCount = 0;
+    data.forEach((row) => {
+      const atividade = {
+        dimensao: row['dimensao'] || row['dimensão'] || '',
+        processo: row['processo'] || '',
+        atividade: row['atividade'] || '',
+        descricao: row['descricao'] || row['descrição'] || '',
+        valorTotal: parseFloat(row['valortotal'] || row['valor'] || '0') || 0,
+        origemRecurso: row['origemrecurso'] || row['origem'] || '',
+        naturezaDespesa: row['naturezadespesa'] || row['natureza'] || '',
+        planoInterno: row['planointerno'] || row['plano'] || '',
+      };
+      if (atividade.atividade && atividade.dimensao) {
+        addAtividade(atividade);
+        importCount++;
+      }
+    });
+    toast.success(`${importCount} atividade(s) importada(s) com sucesso!`);
+  };
+
+  const atividadesCsvColumns = [
+    'dimensao', 'processo', 'atividade', 'descricao', 'valortotal', 'origemrecurso', 'naturezadespesa', 'planointerno'
+  ];
+
+  const atividadesCsvExample = 'GO - Governança,3 - Secretariado,Contratação de serviços,Descrição da atividade,1000,GO.20RL.231796.3,339039 - Outros Serviços,L20RLP99GON';
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -120,10 +150,16 @@ export default function Atividades() {
           <h2 className="text-2xl font-bold text-foreground">Atividades</h2>
           <p className="text-muted-foreground">Gerencie o planejamento orçamentário</p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nova Atividade
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Importar CSV
+          </Button>
+          <Button onClick={() => handleOpenDialog()} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Nova Atividade
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -354,6 +390,16 @@ export default function Atividades() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* CSV Import Dialog */}
+      <CsvImportDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        onImport={handleCsvImport}
+        title="Importar Atividades"
+        expectedColumns={atividadesCsvColumns}
+        exampleRow={atividadesCsvExample}
+      />
     </div>
   );
 }

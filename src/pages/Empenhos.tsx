@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Search, Filter, Calendar } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Filter, Calendar, Upload } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { Empenho, DIMENSOES, NATUREZAS_DESPESA } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { CsvImportDialog } from '@/components/CsvImportDialog';
+import { toast } from 'sonner';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -85,6 +87,7 @@ export default function Empenhos() {
   const [filterDimensao, setFilterDimensao] = useState('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [selectedEmpenho, setSelectedEmpenho] = useState<Empenho | null>(null);
   const [formData, setFormData] = useState(initialFormState);
 
@@ -141,6 +144,48 @@ export default function Empenhos() {
     setIsDeleteDialogOpen(true);
   };
 
+  const handleCsvImport = (data: Record<string, string>[]) => {
+    let importCount = 0;
+    data.forEach((row) => {
+      const parseDate = (dateStr: string): Date => {
+        if (!dateStr) return new Date();
+        // Try common date formats
+        const parts = dateStr.split(/[\/\-]/);
+        if (parts.length === 3) {
+          // DD/MM/YYYY or YYYY-MM-DD
+          if (parts[0].length === 4) {
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+          }
+          return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        }
+        return new Date(dateStr);
+      };
+
+      const empenho = {
+        numero: row['numero'] || row['número'] || '',
+        descricao: row['descricao'] || row['descrição'] || '',
+        valor: parseFloat(row['valor']?.replace(',', '.') || '0') || 0,
+        dimensao: row['dimensao'] || row['dimensão'] || '',
+        origemRecurso: row['origemrecurso'] || row['origem'] || '',
+        naturezaDespesa: row['naturezadespesa'] || row['natureza'] || '',
+        dataEmpenho: parseDate(row['dataempenho'] || row['data'] || ''),
+        status: (row['status'] || 'pendente') as 'pendente' | 'liquidado' | 'pago' | 'cancelado',
+        atividadeId: row['atividadeid'] || '',
+      };
+      if (empenho.numero && empenho.dimensao) {
+        addEmpenho(empenho);
+        importCount++;
+      }
+    });
+    toast.success(`${importCount} empenho(s) importado(s) com sucesso!`);
+  };
+
+  const empenhosCsvColumns = [
+    'numero', 'descricao', 'valor', 'dimensao', 'origemrecurso', 'naturezadespesa', 'dataempenho', 'status'
+  ];
+
+  const empenhosCsvExample = '2024NE000123,Empenho para serviços,500,GO - Governança,GO.20RL.231796.3,339039 - Outros Serviços,15/03/2024,pendente';
+
   // Get unique origens from atividades for the selected dimensao
   const origensDisponiveis = [...new Set(
     atividades
@@ -156,10 +201,16 @@ export default function Empenhos() {
           <h2 className="text-2xl font-bold text-foreground">Empenhos</h2>
           <p className="text-muted-foreground">Gerencie a execução orçamentária</p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Novo Empenho
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Importar CSV
+          </Button>
+          <Button onClick={() => handleOpenDialog()} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Novo Empenho
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -435,6 +486,16 @@ export default function Empenhos() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* CSV Import Dialog */}
+      <CsvImportDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        onImport={handleCsvImport}
+        title="Importar Empenhos"
+        expectedColumns={empenhosCsvColumns}
+        exampleRow={empenhosCsvExample}
+      />
     </div>
   );
 }
