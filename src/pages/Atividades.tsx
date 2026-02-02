@@ -32,7 +32,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
-import { CsvImportDialog } from '@/components/CsvImportDialog';
+import { JsonImportDialog } from '@/components/JsonImportDialog';
 import { toast } from 'sonner';
 
 const formatCurrency = (value: number) => {
@@ -115,16 +115,40 @@ export default function Atividades() {
     setIsDeleteDialogOpen(true);
   };
 
-  const handleCsvImport = (data: Record<string, string>[]) => {
+  const parseValorTotal = (value: string): number => {
+    if (!value || value === '0') return 0;
+    // Handle formats like "R$ 36,045.06" or "36045.06" or "36.045,06"
+    const cleaned = value
+      .replace(/R\$\s*/gi, '')
+      .replace(/\s/g, '')
+      .trim();
+    // Check if it uses Brazilian format (comma as decimal separator)
+    if (cleaned.includes(',') && cleaned.includes('.')) {
+      // Format: 36.045,06 (Brazilian) or 36,045.06 (US)
+      const lastComma = cleaned.lastIndexOf(',');
+      const lastDot = cleaned.lastIndexOf('.');
+      if (lastComma > lastDot) {
+        // Brazilian format: 36.045,06
+        return parseFloat(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+      }
+      // US format: 36,045.06
+      return parseFloat(cleaned.replace(/,/g, '')) || 0;
+    }
+    if (cleaned.includes(',')) {
+      return parseFloat(cleaned.replace(',', '.')) || 0;
+    }
+    return parseFloat(cleaned) || 0;
+  };
+
+  const handleJsonImport = (data: Record<string, string>[]) => {
     let importCount = 0;
     data.forEach((row) => {
-      // Keys are already normalized by CsvImportDialog (lowercase, no accents, no spaces)
       const atividade = {
         dimensao: row['dimensao'] || '',
         processo: row['processo'] || '',
         atividade: row['atividade'] || '',
         descricao: row['descricao'] || '',
-        valorTotal: parseFloat((row['valortotal'] || row['valor'] || '0').replace(',', '.')) || 0,
+        valorTotal: parseValorTotal(row['valortotal'] || row['valor'] || '0'),
         origemRecurso: row['origemrecurso'] || '',
         naturezaDespesa: row['naturezadespesa'] || '',
         planoInterno: row['planointerno'] || '',
@@ -137,11 +161,9 @@ export default function Atividades() {
     toast.success(`${importCount} atividade(s) importada(s) com sucesso!`);
   };
 
-  const atividadesCsvColumns = [
+  const atividadesJsonFields = [
     'dimensao', 'processo', 'atividade', 'descricao', 'valortotal', 'origemrecurso', 'naturezadespesa', 'planointerno'
   ];
-
-  const atividadesCsvExample = 'GO - Governança,3 - Secretariado,Contratação de serviços,Descrição da atividade,1000,GO.20RL.231796.3,339039 - Outros Serviços,L20RLP99GON';
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -154,7 +176,7 @@ export default function Atividades() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setIsImportDialogOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" />
-            Importar CSV
+            Importar JSON
           </Button>
           <Button onClick={() => handleOpenDialog()} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -389,14 +411,13 @@ export default function Atividades() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* CSV Import Dialog */}
-      <CsvImportDialog
+      {/* JSON Import Dialog */}
+      <JsonImportDialog
         open={isImportDialogOpen}
         onOpenChange={setIsImportDialogOpen}
-        onImport={handleCsvImport}
+        onImport={handleJsonImport}
         title="Importar Atividades"
-        expectedColumns={atividadesCsvColumns}
-        exampleRow={atividadesCsvExample}
+        expectedFields={atividadesJsonFields}
       />
     </div>
   );
