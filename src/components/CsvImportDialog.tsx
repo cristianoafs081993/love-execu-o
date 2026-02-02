@@ -114,24 +114,33 @@ export function CsvImportDialog({
   };
 
   const parseCSVLine = (line: string): string[] => {
-    const result: string[] = [];
+    const values: string[] = [];
     let current = '';
     let inQuotes = false;
 
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-      
+
       if (char === '"') {
-        inQuotes = !inQuotes;
+        // Handle escaped quotes ("") within a quoted field
+        if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++; // Skip the next quote
+        } else {
+          // Toggle the inQuotes flag
+          inQuotes = !inQuotes;
+        }
       } else if ((char === ',' || char === ';') && !inQuotes) {
-        result.push(current);
+        // If a comma/semicolon is encountered outside quotes, it's a delimiter
+        values.push(current.trim());
         current = '';
       } else {
         current += char;
       }
     }
-    result.push(current);
-    return result;
+    // Add the last value
+    values.push(current.trim());
+    return values;
   };
 
   const handleImport = () => {
