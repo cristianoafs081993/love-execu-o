@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Upload, FileJson, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,23 +11,21 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-interface CsvImportDialogProps {
+interface JsonImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImport: (data: Record<string, string>[]) => void;
   title: string;
-  expectedColumns: string[];
-  exampleRow: string;
+  expectedFields: string[];
 }
 
-export function CsvImportDialog({
+export function JsonImportDialog({
   open,
   onOpenChange,
   onImport,
   title,
-  expectedColumns,
-  exampleRow,
-}: CsvImportDialogProps) {
+  expectedFields,
+}: JsonImportDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<Record<string, string>[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -41,12 +39,21 @@ export function CsvImportDialog({
     setSuccess(false);
   };
 
+  const normalizeKey = (key: string): string => {
+    return key
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, '');
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    if (!selectedFile.name.endsWith('.csv')) {
-      setError('Por favor, selecione um arquivo CSV.');
+    if (!selectedFile.name.endsWith('.json')) {
+      setError('Por favor, selecione um arquivo JSON.');
       return;
     }
 
@@ -58,89 +65,44 @@ export function CsvImportDialog({
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
-        const lines = text.split('\n').filter((line) => line.trim());
-        
-        if (lines.length < 2) {
-          setError('O arquivo CSV deve ter pelo menos um cabeçalho e uma linha de dados.');
+        const json = JSON.parse(text);
+
+        // Handle both array and single object
+        const dataArray: Record<string, unknown>[] = Array.isArray(json) ? json : [json];
+
+        if (dataArray.length === 0) {
+          setError('O arquivo JSON está vazio.');
           return;
         }
 
-        // Normalize header function to remove accents
-        const normalizeHeader = (header: string): string => {
-          return header
-            .trim()
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "") // Remove diacritics
-            .replace(/\s+/g, ''); // Remove spaces
-        };
+        // Normalize keys for each object
+        const normalizedData: Record<string, string>[] = dataArray.map((item) => {
+          const normalized: Record<string, string> = {};
+          for (const [key, value] of Object.entries(item)) {
+            normalized[normalizeKey(key)] = String(value ?? '');
+          }
+          return normalized;
+        });
 
-        // Parse header
-        const header = parseCSVLine(lines[0]);
-        const normalizedHeaders = header.map(normalizeHeader);
-        
-        // Validate columns (comparing normalized versions)
-        const normalizedExpected = expectedColumns.map(col => 
-          col.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '')
+        // Check for expected fields (using normalized versions)
+        const normalizedExpected = expectedFields.map(normalizeKey);
+        const sampleItem = normalizedData[0];
+        const missingFields = normalizedExpected.filter(
+          (field) => !(field in sampleItem)
         );
-        const missingColumns = expectedColumns.filter((col, index) => 
-          !normalizedHeaders.some(h => h === normalizedExpected[index])
-        );
-        
-        if (missingColumns.length > 0) {
-          setError(`Colunas faltando: ${missingColumns.join(', ')}`);
+
+        if (missingFields.length > 0) {
+          setError(`Campos faltando: ${missingFields.join(', ')}`);
           return;
         }
 
-        // Parse data rows
-        const data: Record<string, string>[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const values = parseCSVLine(lines[i]);
-          const row: Record<string, string> = {};
-          header.forEach((col, index) => {
-            // Use normalized key for consistent access
-            row[normalizeHeader(col)] = values[index]?.trim() || '';
-          });
-          data.push(row);
-        }
-
-        setParsedData(data);
+        setParsedData(normalizedData);
         setSuccess(true);
       } catch (err) {
-        setError('Erro ao processar o arquivo CSV.');
+        setError('Erro ao processar o arquivo JSON. Verifique se o formato é válido.');
       }
     };
     reader.readAsText(selectedFile, 'UTF-8');
-  };
-
-  const parseCSVLine = (line: string): string[] => {
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        // Handle escaped quotes ("") within a quoted field
-        if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-          current += '"';
-          i++; // Skip the next quote
-        } else {
-          // Toggle the inQuotes flag
-          inQuotes = !inQuotes;
-        }
-      } else if ((char === ',' || char === ';') && !inQuotes) {
-        // If a comma/semicolon is encountered outside quotes, it's a delimiter
-        values.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    // Add the last value
-    values.push(current.trim());
-    return values;
   };
 
   const handleImport = () => {
@@ -161,24 +123,20 @@ export function CsvImportDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-5 w-5" />
+            <FileJson className="h-5 w-5" />
             {title}
           </DialogTitle>
           <DialogDescription>
-            Importe dados de um arquivo CSV
+            Importe dados de um arquivo JSON
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Expected columns info */}
+          {/* Expected fields info */}
           <div className="rounded-lg bg-muted p-3 text-sm">
-            <p className="font-medium mb-1">Colunas esperadas:</p>
+            <p className="font-medium mb-1">Campos esperados:</p>
             <p className="text-muted-foreground text-xs">
-              {expectedColumns.join(', ')}
-            </p>
-            <p className="font-medium mt-2 mb-1">Exemplo de linha:</p>
-            <p className="text-muted-foreground text-xs font-mono break-all">
-              {exampleRow}
+              {expectedFields.join(', ')}
             </p>
           </div>
 
@@ -190,7 +148,7 @@ export function CsvImportDialog({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv"
+              accept=".json"
               onChange={handleFileChange}
               className="hidden"
             />
@@ -199,7 +157,7 @@ export function CsvImportDialog({
               <p className="text-sm font-medium">{file.name}</p>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Clique para selecionar um arquivo CSV
+                Clique para selecionar um arquivo JSON
               </p>
             )}
           </div>

@@ -34,7 +34,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CsvImportDialog } from '@/components/CsvImportDialog';
+import { JsonImportDialog } from '@/components/JsonImportDialog';
 import { toast } from 'sonner';
 
 const formatCurrency = (value: number) => {
@@ -144,15 +144,13 @@ export default function Empenhos() {
     setIsDeleteDialogOpen(true);
   };
 
-  const handleCsvImport = (data: Record<string, string>[]) => {
+  const handleJsonImport = (data: Record<string, string>[]) => {
     let importCount = 0;
     data.forEach((row) => {
       const parseDate = (dateStr: string): Date => {
         if (!dateStr) return new Date();
-        // Try common date formats
         const parts = dateStr.split(/[\/\-]/);
         if (parts.length === 3) {
-          // DD/MM/YYYY or YYYY-MM-DD
           if (parts[0].length === 4) {
             return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
           }
@@ -161,11 +159,28 @@ export default function Empenhos() {
         return new Date(dateStr);
       };
 
+      const parseValor = (value: string): number => {
+        if (!value || value === '0') return 0;
+        const cleaned = value.replace(/R\$\s*/gi, '').replace(/\s/g, '').trim();
+        if (cleaned.includes(',') && cleaned.includes('.')) {
+          const lastComma = cleaned.lastIndexOf(',');
+          const lastDot = cleaned.lastIndexOf('.');
+          if (lastComma > lastDot) {
+            return parseFloat(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+          }
+          return parseFloat(cleaned.replace(/,/g, '')) || 0;
+        }
+        if (cleaned.includes(',')) {
+          return parseFloat(cleaned.replace(',', '.')) || 0;
+        }
+        return parseFloat(cleaned) || 0;
+      };
+
       const empenho = {
-        numero: row['numero'] || row['número'] || '',
-        descricao: row['descricao'] || row['descrição'] || '',
-        valor: parseFloat(row['valor']?.replace(',', '.') || '0') || 0,
-        dimensao: row['dimensao'] || row['dimensão'] || '',
+        numero: row['numero'] || '',
+        descricao: row['descricao'] || '',
+        valor: parseValor(row['valor'] || '0'),
+        dimensao: row['dimensao'] || '',
         origemRecurso: row['origemrecurso'] || row['origem'] || '',
         naturezaDespesa: row['naturezadespesa'] || row['natureza'] || '',
         dataEmpenho: parseDate(row['dataempenho'] || row['data'] || ''),
@@ -180,11 +195,9 @@ export default function Empenhos() {
     toast.success(`${importCount} empenho(s) importado(s) com sucesso!`);
   };
 
-  const empenhosCsvColumns = [
+  const empenhosJsonFields = [
     'numero', 'descricao', 'valor', 'dimensao', 'origemrecurso', 'naturezadespesa', 'dataempenho', 'status'
   ];
-
-  const empenhosCsvExample = '2024NE000123,Empenho para serviços,500,GO - Governança,GO.20RL.231796.3,339039 - Outros Serviços,15/03/2024,pendente';
 
   // Dynamic dimensions: fixed + from activities
   const dimensoesDisponiveis = useMemo(() => {
@@ -214,7 +227,7 @@ export default function Empenhos() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setIsImportDialogOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" />
-            Importar CSV
+            Importar JSON
           </Button>
           <Button onClick={() => handleOpenDialog()} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -497,14 +510,13 @@ export default function Empenhos() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* CSV Import Dialog */}
-      <CsvImportDialog
+      {/* JSON Import Dialog */}
+      <JsonImportDialog
         open={isImportDialogOpen}
         onOpenChange={setIsImportDialogOpen}
-        onImport={handleCsvImport}
+        onImport={handleJsonImport}
         title="Importar Empenhos"
-        expectedColumns={empenhosCsvColumns}
-        exampleRow={empenhosCsvExample}
+        expectedFields={empenhosJsonFields}
       />
     </div>
   );
