@@ -1,65 +1,97 @@
 
-# Plano: Correção do Parser CSV para Campos com Vírgulas
+# Plano: Substituir Importação CSV por JSON
 
-## Problema Identificado
+## Contexto
 
-A função `parseCSVLine` atual não trata corretamente o caso de **aspas escapadas** (`""`). No padrão CSV (RFC 4180), quando um campo contém vírgulas, ele é envolvido em aspas duplas. E quando há aspas dentro do campo, elas são representadas como duas aspas seguidas.
+O usuário deseja simplificar a importação de dados trocando o formato CSV pelo formato JSON, que é mais robusto e não possui os problemas de parsing relacionados a vírgulas e aspas.
 
-**Exemplo problemático:**
-```csv
-"Texto com, vírgula","Outro campo"
+## Estrutura do JSON de Atividades (fornecido)
+
+```json
+{
+  "dimensao": "AD - Administração",
+  "Processo": "8 - Orçamento",
+  "Atividade": "Nome da atividade",
+  "descricao": "Descrição",
+  "valortotal": "0",
+  "origemrecurso": "AD.20RL.231796.3",
+  "naturezadespesa": "339000 - Não Especificado",
+  "planointerno": "L20RLP01ADN"
+}
 ```
 
-A implementação atual funciona para casos simples, mas falha quando há:
-- Aspas duplas escapadas dentro de campos (`""`)
-- Combinação de aspas e vírgulas
+## Alterações Propostas
 
-## Solução
+### 1. Criar novo componente `JsonImportDialog.tsx`
 
-### Arquivo: `src/components/CsvImportDialog.tsx`
+**Arquivo:** `src/components/JsonImportDialog.tsx`
 
-Atualizar a função `parseCSVLine` para tratar aspas escapadas corretamente:
+Novo componente que:
+- Aceita arquivos `.json`
+- Faz parsing com `JSON.parse()`
+- Normaliza as chaves dos objetos (lowercase, sem acentos)
+- Exibe preview dos registros encontrados
+- Emite os dados para o componente pai
 
 ```typescript
-const parseCSVLine = (line: string): string[] => {
-  const values: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-
-    if (char === '"') {
-      // Handle escaped quotes ("") within a quoted field
-      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-        current += '"';
-        i++; // Skip the next quote
-      } else {
-        // Toggle the inQuotes flag
-        inQuotes = !inQuotes;
-      }
-    } else if ((char === ',' || char === ';') && !inQuotes) {
-      // If a comma/semicolon is encountered outside quotes, it's a delimiter
-      values.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  // Add the last value
-  values.push(current.trim());
-  return values;
-};
+interface JsonImportDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onImport: (data: Record<string, string>[]) => void;
+  title: string;
+  expectedFields: string[];
+}
 ```
 
-## Mudança Principal
+### 2. Atualizar página de Atividades
 
-| Antes | Depois |
-|-------|--------|
-| Aspas simplesmente alternavam o estado `inQuotes` | Verifica se há duas aspas seguidas (`""`) e as trata como uma aspa literal escapada |
+**Arquivo:** `src/pages/Atividades.tsx`
+
+- Substituir `CsvImportDialog` por `JsonImportDialog`
+- Atualizar `handleJsonImport` para mapear os campos do JSON para o modelo de Atividade
+- Campos a mapear:
+  - `dimensao` -> `dimensao`
+  - `processo` (minúsculo) -> `processo`
+  - `atividade` (minúsculo) -> `atividade`
+  - `descricao` -> `descricao`
+  - `valortotal` -> `valorTotal` (converter para número)
+  - `origemrecurso` -> `origemRecurso`
+  - `naturezadespesa` -> `naturezaDespesa`
+  - `planointerno` -> `planoInterno`
+
+### 3. Atualizar página de Empenhos
+
+**Arquivo:** `src/pages/Empenhos.tsx`
+
+- Substituir `CsvImportDialog` por `JsonImportDialog`
+- Atualizar `handleJsonImport` para mapear os campos do JSON para o modelo de Empenho
+- Campos esperados:
+  - `numero`, `descricao`, `valor`, `dimensao`, `origemrecurso`, `naturezadespesa`, `dataempenho`, `status`
+
+### 4. Remover componente antigo
+
+**Arquivo:** `src/components/CsvImportDialog.tsx`
+
+- Pode ser removido ou mantido como backup (recomendo remover para simplificar)
+
+## Resumo das Alterações
+
+| Arquivo | Ação |
+|---------|------|
+| `src/components/JsonImportDialog.tsx` | **Criar** - Novo componente de importação JSON |
+| `src/pages/Atividades.tsx` | **Modificar** - Usar JsonImportDialog |
+| `src/pages/Empenhos.tsx` | **Modificar** - Usar JsonImportDialog |
+| `src/components/CsvImportDialog.tsx` | **Remover** |
+
+## Vantagens da mudança
+
+1. **Sem problemas de parsing**: JSON não tem ambiguidade com vírgulas ou aspas
+2. **Encoding nativo**: JSON usa UTF-8 por padrão
+3. **Estrutura clara**: Campos com nomes explícitos
+4. **Validação mais simples**: JSON.parse() já valida a estrutura
 
 ## Resultado Esperado
 
-- Campos com vírgulas envolvidos em aspas (`"Texto com, vírgula"`) serão parseados corretamente
-- Campos com aspas escapadas (`"Texto com ""aspas""") serão parseados corretamente
-- As colunas serão mapeadas adequadamente independente do conteúdo do texto
+- Botões "Importar CSV" serão substituídos por "Importar JSON"
+- O arquivo JSON fornecido poderá ser importado diretamente
+- Todos os registros serão mapeados corretamente para o sistema
