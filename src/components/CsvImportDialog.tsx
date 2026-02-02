@@ -65,12 +65,26 @@ export function CsvImportDialog({
           return;
         }
 
+        // Normalize header function to remove accents
+        const normalizeHeader = (header: string): string => {
+          return header
+            .trim()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // Remove diacritics
+            .replace(/\s+/g, ''); // Remove spaces
+        };
+
         // Parse header
         const header = parseCSVLine(lines[0]);
+        const normalizedHeaders = header.map(normalizeHeader);
         
-        // Validate columns
-        const missingColumns = expectedColumns.filter(
-          (col) => !header.some((h) => h.toLowerCase().trim() === col.toLowerCase())
+        // Validate columns (comparing normalized versions)
+        const normalizedExpected = expectedColumns.map(col => 
+          col.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '')
+        );
+        const missingColumns = expectedColumns.filter((col, index) => 
+          !normalizedHeaders.some(h => h === normalizedExpected[index])
         );
         
         if (missingColumns.length > 0) {
@@ -84,7 +98,8 @@ export function CsvImportDialog({
           const values = parseCSVLine(lines[i]);
           const row: Record<string, string> = {};
           header.forEach((col, index) => {
-            row[col.trim().toLowerCase()] = values[index]?.trim() || '';
+            // Use normalized key for consistent access
+            row[normalizeHeader(col)] = values[index]?.trim() || '';
           });
           data.push(row);
         }
@@ -95,7 +110,7 @@ export function CsvImportDialog({
         setError('Erro ao processar o arquivo CSV.');
       }
     };
-    reader.readAsText(selectedFile);
+    reader.readAsText(selectedFile, 'UTF-8');
   };
 
   const parseCSVLine = (line: string): string[] => {

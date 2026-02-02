@@ -118,15 +118,16 @@ export default function Atividades() {
   const handleCsvImport = (data: Record<string, string>[]) => {
     let importCount = 0;
     data.forEach((row) => {
+      // Keys are already normalized by CsvImportDialog (lowercase, no accents, no spaces)
       const atividade = {
-        dimensao: row['dimensao'] || row['dimensão'] || '',
+        dimensao: row['dimensao'] || '',
         processo: row['processo'] || '',
         atividade: row['atividade'] || '',
-        descricao: row['descricao'] || row['descrição'] || '',
-        valorTotal: parseFloat(row['valortotal'] || row['valor'] || '0') || 0,
-        origemRecurso: row['origemrecurso'] || row['origem'] || '',
-        naturezaDespesa: row['naturezadespesa'] || row['natureza'] || '',
-        planoInterno: row['planointerno'] || row['plano'] || '',
+        descricao: row['descricao'] || '',
+        valorTotal: parseFloat((row['valortotal'] || row['valor'] || '0').replace(',', '.')) || 0,
+        origemRecurso: row['origemrecurso'] || '',
+        naturezaDespesa: row['naturezadespesa'] || '',
+        planoInterno: row['planointerno'] || '',
       };
       if (atividade.atividade && atividade.dimensao) {
         addAtividade(atividade);
@@ -216,10 +217,7 @@ export default function Atividades() {
                 {filteredAtividades.map((atividade) => (
                   <tr key={atividade.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                     <td className="py-4 px-4">
-                      <div>
-                        <p className="font-medium text-sm">{atividade.atividade}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{atividade.descricao}</p>
-                      </div>
+                      <p className="font-medium text-sm">{atividade.atividade}</p>
                     </td>
                     <td className="py-4 px-4">
                       <Badge variant="secondary" className="whitespace-nowrap">

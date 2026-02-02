@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2, Search, Filter, Calendar, Upload } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { Empenho, DIMENSOES, NATUREZAS_DESPESA } from '@/types';
@@ -186,12 +186,22 @@ export default function Empenhos() {
 
   const empenhosCsvExample = '2024NE000123,Empenho para serviços,500,GO - Governança,GO.20RL.231796.3,339039 - Outros Serviços,15/03/2024,pendente';
 
-  // Get unique origens from atividades for the selected dimensao
-  const origensDisponiveis = [...new Set(
-    atividades
-      .filter(a => !formData.dimensao || a.dimensao === formData.dimensao)
-      .map(a => a.origemRecurso)
-  )];
+  // Dynamic dimensions: fixed + from activities
+  const dimensoesDisponiveis = useMemo(() => {
+    const dimensoesAtividades = [...new Set(atividades.map(a => a.dimensao).filter(Boolean))];
+    const dimensoesFixas = DIMENSOES.map(d => d.nome);
+    return [...new Set([...dimensoesFixas, ...dimensoesAtividades])];
+  }, [atividades]);
+
+  // Dynamic origins: from activities filtered by selected dimension
+  const origensDisponiveis = useMemo(() => {
+    return [...new Set(
+      atividades
+        .filter(a => !formData.dimensao || a.dimensao === formData.dimensao)
+        .map(a => a.origemRecurso)
+        .filter(Boolean)
+    )];
+  }, [atividades, formData.dimensao]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -382,9 +392,9 @@ export default function Empenhos() {
                     <SelectValue placeholder="Selecione a dimensão" />
                   </SelectTrigger>
                   <SelectContent>
-                    {DIMENSOES.map((d) => (
-                      <SelectItem key={d.codigo} value={d.nome}>
-                        {d.nome}
+                    {dimensoesDisponiveis.map((dimensao) => (
+                      <SelectItem key={dimensao} value={dimensao}>
+                        {dimensao}
                       </SelectItem>
                     ))}
                   </SelectContent>
