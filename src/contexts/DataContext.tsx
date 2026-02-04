@@ -24,6 +24,7 @@ const initialAtividades: Atividade[] = [
   {
     id: '1',
     dimensao: 'GO - Governança',
+    componenteFuncional: 'Gestão Administrativa',
     processo: '3 - Secretariado Executivo',
     atividade: 'Contratação de serviços postais',
     descricao: 'Contratação de serviços postais',
@@ -37,6 +38,7 @@ const initialAtividades: Atividade[] = [
   {
     id: '2',
     dimensao: 'GO - Governança',
+    componenteFuncional: 'Gestão de Pessoas',
     processo: '5 - Gestão de Diárias e Passagens',
     atividade: 'Diárias para eventos institucionais',
     descricao: 'Diárias para eventos institucionais',
@@ -50,6 +52,7 @@ const initialAtividades: Atividade[] = [
   {
     id: '3',
     dimensao: 'EN - Ensino',
+    componenteFuncional: 'Ensino Técnico',
     processo: 'Política de Ensino',
     atividade: 'Reuniões e atividades de integração',
     descricao: 'Realizar reuniões e atividades de integração, articulação e formação continuada',
@@ -63,6 +66,7 @@ const initialAtividades: Atividade[] = [
   {
     id: '4',
     dimensao: 'PE - Pesquisa',
+    componenteFuncional: 'Iniciação Científica',
     processo: 'Fomento à Pesquisa',
     atividade: 'Bolsas de Iniciação Científica',
     descricao: 'Pagamento de bolsas para alunos de iniciação científica',
@@ -82,6 +86,7 @@ const initialEmpenhos: Empenho[] = [
     descricao: 'Empenho para serviços postais',
     valor: 500,
     dimensao: 'GO - Governança',
+    componenteFuncional: 'Gestão Administrativa',
     origemRecurso: 'GO.20RL.231796.3',
     naturezaDespesa: '339039 - Outros Serviços de Terceiros - Pessoa Jurídica',
     dataEmpenho: new Date('2024-03-15'),
@@ -96,6 +101,7 @@ const initialEmpenhos: Empenho[] = [
     descricao: 'Empenho para diárias - Reunião CONIF',
     valor: 5000,
     dimensao: 'GO - Governança',
+    componenteFuncional: 'Gestão de Pessoas',
     origemRecurso: 'GO.20RL.231796.3',
     naturezaDespesa: '339014 - Diárias - Civil',
     dataEmpenho: new Date('2024-04-10'),
@@ -110,6 +116,7 @@ const initialEmpenhos: Empenho[] = [
     descricao: 'Empenho para integração docente',
     valor: 2500,
     dimensao: 'EN - Ensino',
+    componenteFuncional: 'Ensino Técnico',
     origemRecurso: 'EN.21B3.231798.3',
     naturezaDespesa: '339014 - Diárias - Civil',
     dataEmpenho: new Date('2024-05-20'),

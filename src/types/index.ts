@@ -1,6 +1,7 @@
 export interface Atividade {
   id: string;
   dimensao: string;
+  componenteFuncional: string;
   processo: string;
   atividade: string;
   descricao: string;
@@ -18,6 +19,7 @@ export interface Empenho {
   descricao: string;
   valor: number;
   dimensao: string;
+  componenteFuncional: string;
   origemRecurso: string;
   naturezaDespesa: string;
   dataEmpenho: Date;

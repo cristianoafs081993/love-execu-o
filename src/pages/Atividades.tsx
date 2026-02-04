@@ -44,6 +44,7 @@ const formatCurrency = (value: number) => {
 
 const initialFormState = {
   dimensao: '',
+  componenteFuncional: '',
   processo: '',
   atividade: '',
   descricao: '',
@@ -77,6 +78,7 @@ export default function Atividades() {
       setSelectedAtividade(atividade);
       setFormData({
         dimensao: atividade.dimensao,
+        componenteFuncional: atividade.componenteFuncional,
         processo: atividade.processo,
         atividade: atividade.atividade,
         descricao: atividade.descricao,
@@ -145,6 +147,7 @@ export default function Atividades() {
     data.forEach((row) => {
       const atividade = {
         dimensao: row['dimensao'] || '',
+        componenteFuncional: row['componentefuncional'] || row['componente'] || '',
         processo: row['processo'] || '',
         atividade: row['atividade'] || '',
         descricao: row['descricao'] || '',
@@ -162,7 +165,7 @@ export default function Atividades() {
   };
 
   const atividadesJsonFields = [
-    'dimensao', 'processo', 'atividade', 'descricao', 'valortotal', 'origemrecurso', 'naturezadespesa', 'planointerno'
+    'dimensao', 'componentefuncional', 'processo', 'atividade', 'descricao', 'valortotal', 'origemrecurso', 'naturezadespesa', 'planointerno'
   ];
 
   return (
@@ -230,6 +233,7 @@ export default function Atividades() {
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Atividade</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Dimensão</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Componente Funcional</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Origem de Recurso</th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Valor</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Ações</th>
@@ -245,6 +249,9 @@ export default function Atividades() {
                       <Badge variant="secondary" className="whitespace-nowrap">
                         {atividade.dimensao.split(' - ')[0]}
                       </Badge>
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className="text-sm">{atividade.componenteFuncional}</span>
                     </td>
                     <td className="py-4 px-4">
                       <span className="text-sm text-muted-foreground">{atividade.origemRecurso}</span>
@@ -304,6 +311,15 @@ export default function Atividades() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="componenteFuncional">Componente Funcional</Label>
+              <Input
+                id="componenteFuncional"
+                value={formData.componenteFuncional}
+                onChange={(e) => setFormData({ ...formData, componenteFuncional: e.target.value })}
+                placeholder="Ex: Gestão Administrativa"
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="processo">Processo</Label>
@@ -398,7 +414,7 @@ export default function Atividades() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a atividade "{selectedAtividade?.atividade}"? 
+              Tem certeza que deseja excluir a atividade "{selectedAtividade?.atividade}"?
               Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>

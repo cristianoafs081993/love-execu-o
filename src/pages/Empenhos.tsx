@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, Search, Filter, Calendar, Upload } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import { Plus, Pencil, Trash2, Search, Filter, Calendar, Upload, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { Empenho, DIMENSOES, NATUREZAS_DESPESA } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -63,6 +63,7 @@ const initialFormState: {
   descricao: string;
   valor: number;
   dimensao: string;
+  componenteFuncional: string;
   origemRecurso: string;
   naturezaDespesa: string;
   dataEmpenho: Date;
@@ -73,6 +74,7 @@ const initialFormState: {
   descricao: '',
   valor: 0,
   dimensao: '',
+  componenteFuncional: '',
   origemRecurso: '',
   naturezaDespesa: '',
   dataEmpenho: new Date(),
@@ -88,6 +90,8 @@ export default function Empenhos() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isUpdatingSaldos, setIsUpdatingSaldos] = useState(false);
+  const saldosInputRef = useRef<HTMLInputElement>(null);
   const [selectedEmpenho, setSelectedEmpenho] = useState<Empenho | null>(null);
   const [formData, setFormData] = useState(initialFormState);
 
@@ -108,6 +112,7 @@ export default function Empenhos() {
         descricao: empenho.descricao,
         valor: empenho.valor,
         dimensao: empenho.dimensao,
+        componenteFuncional: empenho.componenteFuncional,
         origemRecurso: empenho.origemRecurso,
         naturezaDespesa: empenho.naturezaDespesa,
         dataEmpenho: empenho.dataEmpenho,
@@ -181,6 +186,7 @@ export default function Empenhos() {
         descricao: row['descricao'] || '',
         valor: parseValor(row['valor'] || '0'),
         dimensao: row['dimensao'] || '',
+        componenteFuncional: row['componentefuncional'] || row['componente'] || '',
         origemRecurso: row['origemrecurso'] || row['origem'] || '',
         naturezaDespesa: row['naturezadespesa'] || row['natureza'] || '',
         dataEmpenho: parseDate(row['dataempenho'] || row['data'] || ''),
@@ -196,8 +202,86 @@ export default function Empenhos() {
   };
 
   const empenhosJsonFields = [
-    'numero', 'descricao', 'valor', 'dimensao', 'origemrecurso', 'naturezadespesa', 'dataempenho', 'status'
+    'numero', 'descricao', 'valor', 'dimensao', 'componentefuncional', 'origemrecurso', 'naturezadespesa', 'dataempenho', 'status'
   ];
+
+  // Função para importar saldos de planilha Excel
+  const handleImportSaldos = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUpdatingSaldos(true);
+
+    try {
+      // Import dinâmico do xlsx para evitar carregar a biblioteca na inicialização
+      const XLSX = await import('xlsx');
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet);
+
+      let updatedCount = 0;
+      let notFoundCount = 0;
+
+      jsonData.forEach((row) => {
+        // Procurar a coluna de empenho (case-insensitive)
+        const empenhoKey = Object.keys(row).find(k =>
+          k.toLowerCase().includes('empenho') || k.toLowerCase() === 'numero'
+        );
+        // Procurar a coluna de movimento/valor (case-insensitive)
+        const movimentoKey = Object.keys(row).find(k =>
+          k.toLowerCase().includes('movimento') || k.toLowerCase().includes('liquidado')
+        );
+
+        if (!empenhoKey || !movimentoKey) return;
+
+        const numeroEmpenho = String(row[empenhoKey]).trim();
+        const valorMovimento = typeof row[movimentoKey] === 'number'
+          ? row[movimentoKey] as number
+          : parseFloat(String(row[movimentoKey]).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+
+        // Encontrar o empenho correspondente
+        const empenho = empenhos.find(e =>
+          e.numero === numeroEmpenho ||
+          e.numero.includes(numeroEmpenho) ||
+          numeroEmpenho.includes(e.numero)
+        );
+
+        if (empenho) {
+          // Acumular o valor no valorLiquidado existente
+          const novoValorLiquidado = (empenho.valorLiquidado || 0) + valorMovimento;
+          updateEmpenho(empenho.id, {
+            valorLiquidado: novoValorLiquidado,
+            status: novoValorLiquidado > 0 ? 'liquidado' : 'pendente',
+          });
+          updatedCount++;
+        } else {
+          notFoundCount++;
+          console.warn(`Empenho não encontrado: ${numeroEmpenho}`);
+        }
+      });
+
+      if (updatedCount > 0) {
+        toast.success(`${updatedCount} saldo(s) atualizado(s) com sucesso!`);
+      }
+      if (notFoundCount > 0) {
+        toast.warning(`${notFoundCount} empenho(s) da planilha não encontrado(s) no sistema`);
+      }
+      if (updatedCount === 0 && notFoundCount === 0) {
+        toast.error('Nenhum dado válido encontrado na planilha. Verifique as colunas "Empenho" e "Movimento".');
+      }
+    } catch (error) {
+      console.error('Erro ao importar planilha:', error);
+      toast.error('Erro ao ler a planilha. Verifique o formato do arquivo.');
+    } finally {
+      setIsUpdatingSaldos(false);
+      // Limpar o input para permitir reimportação do mesmo arquivo
+      if (saldosInputRef.current) {
+        saldosInputRef.current.value = '';
+      }
+    }
+  };
 
   // Dynamic dimensions: fixed + from activities
   const dimensoesDisponiveis = useMemo(() => {
@@ -225,6 +309,32 @@ export default function Empenhos() {
           <p className="text-muted-foreground">Gerencie a execução orçamentária</p>
         </div>
         <div className="flex gap-2">
+          {/* Input oculto para importar planilha de saldos */}
+          <input
+            type="file"
+            ref={saldosInputRef}
+            onChange={handleImportSaldos}
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+          />
+          <Button
+            variant="outline"
+            onClick={() => saldosInputRef.current?.click()}
+            className="gap-2"
+            disabled={isUpdatingSaldos}
+          >
+            {isUpdatingSaldos ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Atualizando...
+              </>
+            ) : (
+              <>
+                <FileSpreadsheet className="h-4 w-4" />
+                Atualizar Saldos
+              </>
+            )}
+          </Button>
           <Button variant="outline" onClick={() => setIsImportDialogOpen(true)} className="gap-2">
             <Upload className="h-4 w-4" />
             Importar JSON
@@ -292,10 +402,12 @@ export default function Empenhos() {
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Número</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Descrição</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Origem</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Dimensão</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Data</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Valor</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Componente</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Empenhado</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Liquidado</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Saldo</th>
                   <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Ações</th>
                 </tr>
               </thead>
@@ -306,10 +418,10 @@ export default function Empenhos() {
                       <span className="font-mono text-sm font-medium">{empenho.numero}</span>
                     </td>
                     <td className="py-4 px-4">
-                      <div>
-                        <p className="text-sm">{empenho.descricao}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{empenho.origemRecurso}</p>
-                      </div>
+                      <p className="text-sm">{empenho.descricao}</p>
+                    </td>
+                    <td className="py-4 px-4">
+                      <p className="text-sm text-muted-foreground">{empenho.origemRecurso}</p>
                     </td>
                     <td className="py-4 px-4">
                       <Badge variant="secondary" className="whitespace-nowrap">
@@ -317,18 +429,25 @@ export default function Empenhos() {
                       </Badge>
                     </td>
                     <td className="py-4 px-4">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                        {format(new Date(empenho.dataEmpenho), 'dd/MM/yyyy', { locale: ptBR })}
-                      </div>
+                      <span className="text-sm">{empenho.componenteFuncional}</span>
                     </td>
                     <td className="py-4 px-4 text-right">
                       <span className="font-medium">{formatCurrency(empenho.valor)}</span>
                     </td>
-                    <td className="py-4 px-4 text-center">
-                      <Badge className={statusColors[empenho.status]}>
-                        {statusLabels[empenho.status]}
-                      </Badge>
+                    <td className="py-4 px-4 text-right">
+                      <span className={`font-medium ${(empenho.valorLiquidado || 0) > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>
+                        {formatCurrency(empenho.valorLiquidado || 0)}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-right">
+                      {(() => {
+                        const saldo = empenho.valor - (empenho.valorLiquidado || 0);
+                        return (
+                          <span className={`font-medium ${saldo > 0 ? 'text-green-600' : saldo < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                            {formatCurrency(saldo)}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center justify-center gap-2">
@@ -414,6 +533,15 @@ export default function Empenhos() {
                 </Select>
               </div>
               <div className="grid gap-2">
+                <Label htmlFor="componenteFuncional">Componente Funcional</Label>
+                <Input
+                  id="componenteFuncional"
+                  value={formData.componenteFuncional}
+                  onChange={(e) => setFormData({ ...formData, componenteFuncional: e.target.value })}
+                  placeholder="Ex: Gestão Administrativa"
+                />
+              </div>
+              <div className="grid gap-2">
                 <Label htmlFor="origemRecurso">Origem de Recurso</Label>
                 <Select
                   value={formData.origemRecurso}
@@ -497,7 +625,7 @@ export default function Empenhos() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o empenho "{selectedEmpenho?.numero}"? 
+              Tem certeza que deseja excluir o empenho "{selectedEmpenho?.numero}"?
               Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
