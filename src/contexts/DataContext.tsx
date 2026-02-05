@@ -1,10 +1,15 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+
+import React, { createContext, useContext, useCallback, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Atividade, Empenho, ResumoOrcamentario } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
+import { atividadesService } from '@/services/atividades';
+import { empenhosService } from '@/services/empenhos';
+import { toast } from 'sonner';
 
 interface DataContextType {
   atividades: Atividade[];
   empenhos: Empenho[];
+  isLoading: boolean;
   addAtividade: (atividade: Omit<Atividade, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateAtividade: (id: string, atividade: Partial<Atividade>) => void;
   deleteAtividade: (id: string) => void;
@@ -19,162 +24,145 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-// Initial sample data
-const initialAtividades: Atividade[] = [
-  {
-    id: '1',
-    dimensao: 'GO - Governança',
-    componenteFuncional: 'Gestão Administrativa',
-    processo: '3 - Secretariado Executivo',
-    atividade: 'Contratação de serviços postais',
-    descricao: 'Contratação de serviços postais',
-    valorTotal: 1000,
-    origemRecurso: 'GO.20RL.231796.3',
-    naturezaDespesa: '339039 - Outros Serviços de Terceiros - Pessoa Jurídica',
-    planoInterno: 'L20RLP99GON',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: '2',
-    dimensao: 'GO - Governança',
-    componenteFuncional: 'Gestão de Pessoas',
-    processo: '5 - Gestão de Diárias e Passagens',
-    atividade: 'Diárias para eventos institucionais',
-    descricao: 'Diárias para eventos institucionais',
-    valorTotal: 25000,
-    origemRecurso: 'GO.20RL.231796.3',
-    naturezaDespesa: '339014 - Diárias - Civil',
-    planoInterno: 'L20RLP99GON',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: '3',
-    dimensao: 'EN - Ensino',
-    componenteFuncional: 'Ensino Técnico',
-    processo: 'Política de Ensino',
-    atividade: 'Reuniões e atividades de integração',
-    descricao: 'Realizar reuniões e atividades de integração, articulação e formação continuada',
-    valorTotal: 7095,
-    origemRecurso: 'EN.21B3.231798.3',
-    naturezaDespesa: '339014 - Diárias - Civil',
-    planoInterno: 'L21B3P19ENN',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: '4',
-    dimensao: 'PE - Pesquisa',
-    componenteFuncional: 'Iniciação Científica',
-    processo: 'Fomento à Pesquisa',
-    atividade: 'Bolsas de Iniciação Científica',
-    descricao: 'Pagamento de bolsas para alunos de iniciação científica',
-    valorTotal: 50000,
-    origemRecurso: 'PE.20RL.231796.3',
-    naturezaDespesa: '339018 - Auxílio Financeiro a Estudantes',
-    planoInterno: 'L20RLP99PEN',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-];
-
-const initialEmpenhos: Empenho[] = [
-  {
-    id: '1',
-    numero: '2024NE000123',
-    descricao: 'Empenho para serviços postais',
-    valor: 500,
-    dimensao: 'GO - Governança',
-    componenteFuncional: 'Gestão Administrativa',
-    origemRecurso: 'GO.20RL.231796.3',
-    naturezaDespesa: '339039 - Outros Serviços de Terceiros - Pessoa Jurídica',
-    dataEmpenho: new Date('2024-03-15'),
-    status: 'liquidado',
-    atividadeId: '1',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: '2',
-    numero: '2024NE000124',
-    descricao: 'Empenho para diárias - Reunião CONIF',
-    valor: 5000,
-    dimensao: 'GO - Governança',
-    componenteFuncional: 'Gestão de Pessoas',
-    origemRecurso: 'GO.20RL.231796.3',
-    naturezaDespesa: '339014 - Diárias - Civil',
-    dataEmpenho: new Date('2024-04-10'),
-    status: 'pago',
-    atividadeId: '2',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: '3',
-    numero: '2024NE000125',
-    descricao: 'Empenho para integração docente',
-    valor: 2500,
-    dimensao: 'EN - Ensino',
-    componenteFuncional: 'Ensino Técnico',
-    origemRecurso: 'EN.21B3.231798.3',
-    naturezaDespesa: '339014 - Diárias - Civil',
-    dataEmpenho: new Date('2024-05-20'),
-    status: 'pendente',
-    atividadeId: '3',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-];
-
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [atividades, setAtividades] = useState<Atividade[]>(initialAtividades);
-  const [empenhos, setEmpenhos] = useState<Empenho[]>(initialEmpenhos);
+  const queryClient = useQueryClient();
 
-  const addAtividade = useCallback((atividade: Omit<Atividade, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newAtividade: Atividade = {
-      ...atividade,
-      id: uuidv4(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setAtividades((prev) => [...prev, newAtividade]);
-  }, []);
+  // --- Queries ---
+  const { data: atividades = [], isLoading: isLoadingAtividades } = useQuery({
+    queryKey: ['atividades'],
+    queryFn: atividadesService.getAll,
+  });
 
-  const updateAtividade = useCallback((id: string, updates: Partial<Atividade>) => {
-    setAtividades((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, ...updates, updatedAt: new Date() } : a))
-    );
-  }, []);
+  const { data: empenhos = [], isLoading: isLoadingEmpenhos } = useQuery({
+    queryKey: ['empenhos'],
+    queryFn: empenhosService.getAll,
+  });
 
-  const deleteAtividade = useCallback((id: string) => {
-    setAtividades((prev) => prev.filter((a) => a.id !== id));
-  }, []);
+  const isLoading = isLoadingAtividades || isLoadingEmpenhos;
 
-  const addEmpenho = useCallback((empenho: Omit<Empenho, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newEmpenho: Empenho = {
-      ...empenho,
-      id: uuidv4(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setEmpenhos((prev) => [...prev, newEmpenho]);
-  }, []);
+  // --- Mutations: Atividades ---
+  const createAtividadeMutation = useMutation({
+    mutationFn: atividadesService.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['atividades'] });
+      toast.success('Atividade criada com sucesso!');
+    },
+    onError: (error) => {
+      console.error(error);
+      toast.error('Erro ao criar atividade.');
+    },
+  });
 
-  const updateEmpenho = useCallback((id: string, updates: Partial<Empenho>) => {
-    setEmpenhos((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, ...updates, updatedAt: new Date() } : e))
-    );
-  }, []);
+  const updateAtividadeMutation = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Atividade> }) =>
+      atividadesService.update(id, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['atividades'] });
+      toast.success('Atividade atualizada com sucesso!');
+    },
+    onError: (error) => {
+      console.error(error);
+      toast.error('Erro ao atualizar atividade.');
+    },
+  });
 
-  const deleteEmpenho = useCallback((id: string) => {
-    setEmpenhos((prev) => prev.filter((e) => e.id !== id));
-  }, []);
+  const deleteAtividadeMutation = useMutation({
+    mutationFn: atividadesService.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['atividades'] });
+      toast.success('Atividade excluída com sucesso!');
+    },
+    onError: (error) => {
+      console.error(error);
+      toast.error('Erro ao excluir atividade.');
+    },
+  });
 
+  // --- Mutations: Empenhos ---
+  const createEmpenhoMutation = useMutation({
+    mutationFn: empenhosService.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['empenhos'] });
+      toast.success('Empenho criado com sucesso!');
+    },
+    onError: (error) => {
+      console.error(error);
+      toast.error('Erro ao criar empenho.');
+    },
+  });
+
+  const updateEmpenhoMutation = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Empenho> }) =>
+      empenhosService.update(id, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['empenhos'] });
+      toast.success('Empenho atualizado com sucesso!');
+    },
+    onError: (error) => {
+      console.error(error);
+      toast.error('Erro ao atualizar empenho.');
+    },
+  });
+
+  const deleteEmpenhoMutation = useMutation({
+    mutationFn: empenhosService.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['empenhos'] });
+      toast.success('Empenho excluído com sucesso!');
+    },
+    onError: (error) => {
+      console.error(error);
+      toast.error('Erro ao excluir empenho.');
+    },
+  });
+
+  // --- Wrappers ---
+  const addAtividade = useCallback(
+    (atividade: Omit<Atividade, 'id' | 'createdAt' | 'updatedAt'>) => {
+      createAtividadeMutation.mutate(atividade);
+    },
+    [createAtividadeMutation]
+  );
+
+  const updateAtividade = useCallback(
+    (id: string, updates: Partial<Atividade>) => {
+      updateAtividadeMutation.mutate({ id, updates });
+    },
+    [updateAtividadeMutation]
+  );
+
+  const deleteAtividade = useCallback(
+    (id: string) => {
+      deleteAtividadeMutation.mutate(id);
+    },
+    [deleteAtividadeMutation]
+  );
+
+  const addEmpenho = useCallback(
+    (empenho: Omit<Empenho, 'id' | 'createdAt' | 'updatedAt'>) => {
+      createEmpenhoMutation.mutate(empenho);
+    },
+    [createEmpenhoMutation]
+  );
+
+  const updateEmpenho = useCallback(
+    (id: string, updates: Partial<Empenho>) => {
+      updateEmpenhoMutation.mutate({ id, updates });
+    },
+    [updateEmpenhoMutation]
+  );
+
+  const deleteEmpenho = useCallback(
+    (id: string) => {
+      deleteEmpenhoMutation.mutate(id);
+    },
+    [deleteEmpenhoMutation]
+  );
+
+  // --- Derived Data (KPIs) ---
   const getResumoOrcamentario = useCallback((): ResumoOrcamentario[] => {
     const resumoMap = new Map<string, ResumoOrcamentario>();
 
-    // Agrupa atividades por dimensão e origem de recurso
     atividades.forEach((a) => {
       const key = `${a.dimensao}|${a.origemRecurso}`;
       const existing = resumoMap.get(key);
@@ -192,7 +180,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Soma empenhos por dimensão e origem de recurso
     empenhos.forEach((e) => {
       if (e.status !== 'cancelado') {
         const key = `${e.dimensao}|${e.origemRecurso}`;
@@ -203,7 +190,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Calcula saldo e percentual
     resumoMap.forEach((resumo) => {
       resumo.saldoDisponivel = resumo.valorPlanejado - resumo.valorEmpenhado;
       resumo.percentualExecutado =
@@ -233,6 +219,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     () => ({
       atividades,
       empenhos,
+      isLoading,
       addAtividade,
       updateAtividade,
       deleteAtividade,
@@ -247,6 +234,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [
       atividades,
       empenhos,
+      isLoading,
       addAtividade,
       updateAtividade,
       deleteAtividade,

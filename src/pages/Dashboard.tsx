@@ -51,13 +51,8 @@ import {
 import { format, isWithinInterval, parseISO, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { DIMENSOES } from '@/types';
+import { formatCurrency } from '@/lib/utils';
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(value);
-};
 
 export default function Dashboard() {
   const { atividades, empenhos } = useData();

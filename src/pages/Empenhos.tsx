@@ -36,13 +36,8 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { JsonImportDialog } from '@/components/JsonImportDialog';
 import { toast } from 'sonner';
+import { formatCurrency, parseCurrency } from '@/lib/utils';
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(value);
-};
 
 const statusColors: Record<string, string> = {
   pendente: 'bg-warning/20 text-warning border-warning/30',
@@ -203,27 +198,11 @@ export default function Empenhos() {
         return new Date(dateStr);
       };
 
-      const parseValor = (value: string): number => {
-        if (!value || value === '0') return 0;
-        const cleaned = value.replace(/R\$\s*/gi, '').replace(/\s/g, '').trim();
-        if (cleaned.includes(',') && cleaned.includes('.')) {
-          const lastComma = cleaned.lastIndexOf(',');
-          const lastDot = cleaned.lastIndexOf('.');
-          if (lastComma > lastDot) {
-            return parseFloat(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
-          }
-          return parseFloat(cleaned.replace(/,/g, '')) || 0;
-        }
-        if (cleaned.includes(',')) {
-          return parseFloat(cleaned.replace(',', '.')) || 0;
-        }
-        return parseFloat(cleaned) || 0;
-      };
 
       const empenho = {
         numero: row['numero'] || '',
         descricao: row['descricao'] || '',
-        valor: parseValor(row['valor'] || '0'),
+        valor: parseCurrency(row['valor'] || '0'),
         dimensao: row['dimensao'] || '',
         componenteFuncional: row['componentefuncional'] || row['componente'] || '',
         origemRecurso: row['origemrecurso'] || row['origem'] || '',
@@ -277,7 +256,7 @@ export default function Empenhos() {
         const numeroEmpenho = String(row[empenhoKey]).trim();
         const valorMovimento = typeof row[movimentoKey] === 'number'
           ? row[movimentoKey] as number
-          : parseFloat(String(row[movimentoKey]).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+          : parseCurrency(String(row[movimentoKey]));
 
         const empenho = empenhos.find(e =>
           e.numero === numeroEmpenho ||

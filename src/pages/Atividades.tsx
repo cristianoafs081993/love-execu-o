@@ -34,13 +34,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { JsonImportDialog } from '@/components/JsonImportDialog';
 import { toast } from 'sonner';
+import { formatCurrency, parseCurrency } from '@/lib/utils';
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(value);
-};
 
 const initialFormState = {
   dimensao: '',
@@ -132,25 +127,6 @@ export default function Atividades() {
     setIsDeleteDialogOpen(true);
   };
 
-  const parseValorTotal = (value: string): number => {
-    if (!value || value === '0') return 0;
-    const cleaned = value
-      .replace(/R\$\s*/gi, '')
-      .replace(/\s/g, '')
-      .trim();
-    if (cleaned.includes(',') && cleaned.includes('.')) {
-      const lastComma = cleaned.lastIndexOf(',');
-      const lastDot = cleaned.lastIndexOf('.');
-      if (lastComma > lastDot) {
-        return parseFloat(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
-      }
-      return parseFloat(cleaned.replace(/,/g, '')) || 0;
-    }
-    if (cleaned.includes(',')) {
-      return parseFloat(cleaned.replace(',', '.')) || 0;
-    }
-    return parseFloat(cleaned) || 0;
-  };
 
   const handleJsonImport = (data: Record<string, string>[]) => {
     let importCount = 0;
@@ -161,7 +137,7 @@ export default function Atividades() {
         processo: row['processo'] || '',
         atividade: row['atividade'] || '',
         descricao: row['descricao'] || '',
-        valorTotal: parseValorTotal(row['valortotal'] || row['valor'] || '0'),
+        valorTotal: parseCurrency(row['valortotal'] || row['valor'] || '0'),
         origemRecurso: row['origemrecurso'] || '',
         naturezaDespesa: row['naturezadespesa'] || '',
         planoInterno: row['planointerno'] || '',
