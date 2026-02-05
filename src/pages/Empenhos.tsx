@@ -69,6 +69,9 @@ const initialFormState: {
   dataEmpenho: Date;
   status: 'pendente' | 'liquidado' | 'pago' | 'cancelado';
   atividadeId: string;
+  planoInterno: string;
+  favorecidoNome: string;
+  favorecidoDocumento: string;
 } = {
   numero: '',
   descricao: '',
@@ -80,6 +83,9 @@ const initialFormState: {
   dataEmpenho: new Date(),
   status: 'pendente',
   atividadeId: '',
+  planoInterno: '',
+  favorecidoNome: '',
+  favorecidoDocumento: '',
 };
 
 export default function Empenhos() {
@@ -87,6 +93,15 @@ export default function Empenhos() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterDimensao, setFilterDimensao] = useState('all');
+
+  // Novos Filtros
+  const [filterComponente, setFilterComponente] = useState('all');
+  const [filterOrigem, setFilterOrigem] = useState('all');
+  const [filterPlanoInterno, setFilterPlanoInterno] = useState('all');
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -95,13 +110,34 @@ export default function Empenhos() {
   const [selectedEmpenho, setSelectedEmpenho] = useState<Empenho | null>(null);
   const [formData, setFormData] = useState(initialFormState);
 
+  // Extrair opções únicas para filtros
+  const componentesUnicos = Array.from(new Set(empenhos.map(e => e.componenteFuncional).filter(Boolean))).sort();
+  const origensUnicas = Array.from(new Set(empenhos.map(e => e.origemRecurso).filter(Boolean))).sort();
+  const planosUnicos = Array.from(new Set(empenhos.map(e => e.planoInterno).filter(Boolean))).sort();
+
   const filteredEmpenhos = empenhos.filter((e) => {
     const matchesSearch =
       e.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.descricao.toLowerCase().includes(searchTerm.toLowerCase());
+      e.descricao.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.componenteFuncional?.toLowerCase().includes(searchTerm.toLowerCase());
+
     const matchesStatus = filterStatus === 'all' || e.status === filterStatus;
     const matchesDimensao = filterDimensao === 'all' || e.dimensao.includes(filterDimensao);
-    return matchesSearch && matchesStatus && matchesDimensao;
+    const matchesComponente = filterComponente === 'all' || e.componenteFuncional === filterComponente;
+    const matchesOrigem = filterOrigem === 'all' || e.origemRecurso === filterOrigem;
+    const matchesPlano = filterPlanoInterno === 'all' || e.planoInterno === filterPlanoInterno;
+
+    // Filtro de Data
+    let matchesData = true;
+    if (dataInicio && dataFim) {
+      const data = new Date(e.dataEmpenho);
+      const inicio = new Date(dataInicio);
+      const fim = new Date(dataFim);
+      fim.setHours(23, 59, 59, 999);
+      matchesData = data >= inicio && data <= fim;
+    }
+
+    return matchesSearch && matchesStatus && matchesDimensao && matchesComponente && matchesOrigem && matchesPlano && matchesData;
   });
 
   const handleOpenDialog = (empenho?: Empenho) => {
@@ -115,6 +151,9 @@ export default function Empenhos() {
         componenteFuncional: empenho.componenteFuncional,
         origemRecurso: empenho.origemRecurso,
         naturezaDespesa: empenho.naturezaDespesa,
+        planoInterno: empenho.planoInterno || '',
+        favorecidoNome: empenho.favorecidoNome || '',
+        favorecidoDocumento: empenho.favorecidoDocumento || '',
         dataEmpenho: empenho.dataEmpenho,
         status: empenho.status,
         atividadeId: empenho.atividadeId || '',
@@ -189,6 +228,9 @@ export default function Empenhos() {
         componenteFuncional: row['componentefuncional'] || row['componente'] || '',
         origemRecurso: row['origemrecurso'] || row['origem'] || '',
         naturezaDespesa: row['naturezadespesa'] || row['natureza'] || '',
+        planoInterno: row['planointerno'] || row['plano'] || '',
+        favorecidoNome: row['favorecido'] || row['nomefavorecido'] || row['razaosocial'] || '',
+        favorecidoDocumento: row['documentofavorecido'] || row['cpf'] || row['cnpj'] || row['cpfcnpj'] || '',
         dataEmpenho: parseDate(row['dataempenho'] || row['data'] || ''),
         status: (row['status'] || 'pendente') as 'pendente' | 'liquidado' | 'pago' | 'cancelado',
         atividadeId: row['atividadeid'] || '',
@@ -202,10 +244,9 @@ export default function Empenhos() {
   };
 
   const empenhosJsonFields = [
-    'numero', 'descricao', 'valor', 'dimensao', 'componentefuncional', 'origemrecurso', 'naturezadespesa', 'dataempenho', 'status'
+    'numero', 'descricao', 'valor', 'dimensao', 'componentefuncional', 'origemrecurso', 'naturezadespesa', 'dataempenho', 'planointerno', 'favorecido', 'cpfcnpj'
   ];
 
-  // Função para importar saldos de planilha Excel
   const handleImportSaldos = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -213,7 +254,6 @@ export default function Empenhos() {
     setIsUpdatingSaldos(true);
 
     try {
-      // Import dinâmico do xlsx para evitar carregar a biblioteca na inicialização
       const XLSX = await import('xlsx');
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
@@ -225,11 +265,9 @@ export default function Empenhos() {
       let notFoundCount = 0;
 
       jsonData.forEach((row) => {
-        // Procurar a coluna de empenho (case-insensitive)
         const empenhoKey = Object.keys(row).find(k =>
           k.toLowerCase().includes('empenho') || k.toLowerCase() === 'numero'
         );
-        // Procurar a coluna de movimento/valor (case-insensitive)
         const movimentoKey = Object.keys(row).find(k =>
           k.toLowerCase().includes('movimento') || k.toLowerCase().includes('liquidado')
         );
@@ -241,7 +279,6 @@ export default function Empenhos() {
           ? row[movimentoKey] as number
           : parseFloat(String(row[movimentoKey]).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
 
-        // Encontrar o empenho correspondente
         const empenho = empenhos.find(e =>
           e.numero === numeroEmpenho ||
           e.numero.includes(numeroEmpenho) ||
@@ -249,7 +286,6 @@ export default function Empenhos() {
         );
 
         if (empenho) {
-          // Acumular o valor no valorLiquidado existente
           const novoValorLiquidado = (empenho.valorLiquidado || 0) + valorMovimento;
           updateEmpenho(empenho.id, {
             valorLiquidado: novoValorLiquidado,
@@ -276,21 +312,18 @@ export default function Empenhos() {
       toast.error('Erro ao ler a planilha. Verifique o formato do arquivo.');
     } finally {
       setIsUpdatingSaldos(false);
-      // Limpar o input para permitir reimportação do mesmo arquivo
       if (saldosInputRef.current) {
         saldosInputRef.current.value = '';
       }
     }
   };
 
-  // Dynamic dimensions: fixed + from activities
   const dimensoesDisponiveis = useMemo(() => {
     const dimensoesAtividades = [...new Set(atividades.map(a => a.dimensao).filter(Boolean))];
     const dimensoesFixas = DIMENSOES.map(d => d.nome);
     return [...new Set([...dimensoesFixas, ...dimensoesAtividades])];
   }, [atividades]);
 
-  // Dynamic origins: from activities filtered by selected dimension
   const origensDisponiveis = useMemo(() => {
     return [...new Set(
       atividades
@@ -309,7 +342,6 @@ export default function Empenhos() {
           <p className="text-muted-foreground">Gerencie a execução orçamentária</p>
         </div>
         <div className="flex gap-2">
-          {/* Input oculto para importar planilha de saldos */}
           <input
             type="file"
             ref={saldosInputRef}
@@ -348,7 +380,11 @@ export default function Empenhos() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
+        <CardHeader className="pb-3">
+          <CardTitle>Filtros</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Linha 1: Busca e Filtros Básicos */}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -359,32 +395,131 @@ export default function Empenhos() {
                 className="pl-10"
               />
             </div>
-            <Select value={filterDimensao} onValueChange={setFilterDimensao}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Dimensão" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas dimensões</SelectItem>
-                {DIMENSOES.map((d) => (
-                  <SelectItem key={d.codigo} value={d.codigo}>
-                    {d.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-full sm:w-[150px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos status</SelectItem>
-                <SelectItem value="pendente">Pendente</SelectItem>
-                <SelectItem value="liquidado">Liquidado</SelectItem>
-                <SelectItem value="pago">Pago</SelectItem>
-                <SelectItem value="cancelado">Cancelado</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="w-full sm:w-[180px]">
+              <Select value={filterDimensao} onValueChange={setFilterDimensao}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Dimensão" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas dimensões</SelectItem>
+                  {DIMENSOES.map((d) => (
+                    <SelectItem key={d.codigo} value={d.codigo}>
+                      {d.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full sm:w-[150px]">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos status</SelectItem>
+                  <SelectItem value="pendente">Pendente</SelectItem>
+                  <SelectItem value="liquidado">Liquidado</SelectItem>
+                  <SelectItem value="pago">Pago</SelectItem>
+                  <SelectItem value="cancelado">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant={showAdvancedFilters ? "secondary" : "outline"}
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              Filtros
+            </Button>
           </div>
+
+          {/* Linha 2: Filtros Avançados (Colapsável) */}
+          {showAdvancedFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-muted/30 rounded-lg border border-border/50 animate-in slide-in-from-top-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Componente Funcional</label>
+                <Select value={filterComponente} onValueChange={setFilterComponente}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {componentesUnicos.map(comp => (
+                      <SelectItem key={comp} value={comp}>{comp}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Origem de Recurso</label>
+                <Select value={filterOrigem} onValueChange={setFilterOrigem}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {origensUnicas.map(origem => (
+                      <SelectItem key={origem} value={origem}>{origem}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Plano Interno</label>
+                <Select value={filterPlanoInterno} onValueChange={setFilterPlanoInterno}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {planosUnicos.map(plano => (
+                      <SelectItem key={plano} value={plano}>{plano}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Período (Início)</label>
+                <Input
+                  type="date"
+                  value={dataInicio}
+                  onChange={(e) => setDataInicio(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Período (Fim)</label>
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={dataFim}
+                    onChange={(e) => setDataFim(e.target.value)}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Limpar Filtros"
+                    onClick={() => {
+                      setFilterDimensao('all');
+                      setFilterStatus('all');
+                      setFilterComponente('all');
+                      setFilterOrigem('all');
+                      setFilterPlanoInterno('all');
+                      setDataInicio('');
+                      setDataFim('');
+                      setSearchTerm('');
+                    }}
+                  >
+                    <Filter className="w-4 h-4 text-muted-foreground" />
+                    <span className="sr-only">Limpar</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -400,46 +535,56 @@ export default function Empenhos() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Número</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Descrição</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Origem</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Dimensão</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Componente</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Empenhado</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Liquidado</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Saldo</th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Ações</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground whitespace-nowrap">Número</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground min-w-[200px]">Descrição</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground min-w-[150px]">Favorecido</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground whitespace-nowrap">Componente / Dimensão</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground whitespace-nowrap">Origem / Plano</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground whitespace-nowrap">Empenhado / Liquidado</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground whitespace-nowrap">Saldo</th>
+                  <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground whitespace-nowrap">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredEmpenhos.map((empenho) => (
                   <tr key={empenho.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                    <td className="py-4 px-4">
-                      <span className="font-mono text-sm font-medium">{empenho.numero}</span>
+                    <td className="py-4 px-4 align-top">
+                      <span className="font-mono text-sm font-medium whitespace-nowrap">{empenho.numero}</span>
                     </td>
-                    <td className="py-4 px-4">
-                      <p className="text-sm">{empenho.descricao}</p>
+                    <td className="py-4 px-4 align-top">
+                      <p className="text-sm line-clamp-2" title={empenho.descricao}>{empenho.descricao}</p>
                     </td>
-                    <td className="py-4 px-4">
-                      <p className="text-sm text-muted-foreground">{empenho.origemRecurso}</p>
+                    <td className="py-4 px-4 align-top">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium truncate max-w-[150px]" title={empenho.favorecidoNome}>{empenho.favorecidoNome || '-'}</span>
+                        <span className="text-xs text-muted-foreground">{empenho.favorecidoDocumento}</span>
+                      </div>
                     </td>
-                    <td className="py-4 px-4">
-                      <Badge variant="secondary" className="whitespace-nowrap">
-                        {empenho.dimensao.split(' - ')[0]}
-                      </Badge>
+                    <td className="py-4 px-4 align-top">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-medium">{empenho.componenteFuncional}</span>
+                        <Badge variant="secondary" className="w-fit whitespace-nowrap">
+                          {empenho.dimensao.split(' - ')[0]}
+                        </Badge>
+                      </div>
                     </td>
-                    <td className="py-4 px-4">
-                      <span className="text-sm">{empenho.componenteFuncional}</span>
+                    <td className="py-4 px-4 align-top">
+                      <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium whitespace-nowrap">{empenho.origemRecurso}</p>
+                        {empenho.planoInterno && (
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">{empenho.planoInterno}</span>
+                        )}
+                      </div>
                     </td>
-                    <td className="py-4 px-4 text-right">
-                      <span className="font-medium">{formatCurrency(empenho.valor)}</span>
+                    <td className="py-4 px-4 text-right align-top whitespace-nowrap">
+                      <div className="flex flex-col gap-1 items-end">
+                        <span className="font-medium" title="Empenhado">{formatCurrency(empenho.valor)}</span>
+                        <span className={`text-xs ${(empenho.valorLiquidado || 0) > 0 ? 'text-blue-600' : 'text-muted-foreground'}`} title="Liquidado">
+                          Liq: {formatCurrency(empenho.valorLiquidado || 0)}
+                        </span>
+                      </div>
                     </td>
-                    <td className="py-4 px-4 text-right">
-                      <span className={`font-medium ${(empenho.valorLiquidado || 0) > 0 ? 'text-blue-600' : 'text-muted-foreground'}`}>
-                        {formatCurrency(empenho.valorLiquidado || 0)}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-right">
+                    <td className="py-4 px-4 text-right align-top whitespace-nowrap">
                       {(() => {
                         const saldo = empenho.valor - (empenho.valorLiquidado || 0);
                         return (
@@ -449,7 +594,7 @@ export default function Empenhos() {
                         );
                       })()}
                     </td>
-                    <td className="py-4 px-4">
+                    <td className="py-4 px-4 align-top whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2">
                         <Button
                           variant="ghost"
@@ -504,6 +649,7 @@ export default function Empenhos() {
                 />
               </div>
             </div>
+
             <div className="grid gap-2">
               <Label htmlFor="descricao">Descrição</Label>
               <Textarea
@@ -513,6 +659,29 @@ export default function Empenhos() {
                 placeholder="Descrição do empenho"
               />
             </div>
+
+            {/* Favorecido Section */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor="favorecidoNome">Favorecido (Nome/Razão Social)</Label>
+                <Input
+                  id="favorecidoNome"
+                  value={formData.favorecidoNome}
+                  onChange={(e) => setFormData({ ...formData, favorecidoNome: e.target.value })}
+                  placeholder="Nome do favorecido"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="favorecidoDocumento">CPF/CNPJ</Label>
+                <Input
+                  id="favorecidoDocumento"
+                  value={formData.favorecidoDocumento}
+                  onChange={(e) => setFormData({ ...formData, favorecidoDocumento: e.target.value })}
+                  placeholder="Documento"
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="dimensao">Dimensão</Label>
@@ -543,23 +712,30 @@ export default function Empenhos() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="origemRecurso">Origem de Recurso</Label>
-                <Select
+                <Input
+                  id="origemRecurso"
                   value={formData.origemRecurso}
-                  onValueChange={(v) => setFormData({ ...formData, origemRecurso: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a origem" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {origensDisponiveis.map((origem) => (
-                      <SelectItem key={origem} value={origem}>
-                        {origem}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(e) => setFormData({ ...formData, origemRecurso: e.target.value })}
+                  placeholder="Ex: Fonte 100/111"
+                  list="origens-list"
+                />
+                <datalist id="origens-list">
+                  {origensDisponiveis.map((origem) => (
+                    <option key={origem} value={origem} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="planoInterno">Plano Interno</Label>
+                <Input
+                  id="planoInterno"
+                  value={formData.planoInterno || ''}
+                  onChange={(e) => setFormData({ ...formData, planoInterno: e.target.value })}
+                  placeholder="Ex: L20RLP01ADN"
+                />
               </div>
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="valor">Valor (R$)</Label>

@@ -64,8 +64,23 @@ export function JsonImportDialog({
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const text = event.target?.result as string;
-        const json = JSON.parse(text);
+        let text = event.target?.result as string;
+
+        // Remove Byte Order Mark (BOM) if present, common in Windows files
+        if (text.charCodeAt(0) === 0xFEFF) {
+          text = text.slice(1);
+        }
+
+        // SANITIZATION: Replace invalid JSON values like NaN with "0"
+        // This handles cases where values are unquoted NaN which is invalid in JSON but common in some exports
+        text = text.replace(/:\s*NaN\b/g, ': "0"');
+
+        let json;
+        try {
+          json = JSON.parse(text);
+        } catch (e) {
+          throw new Error('Sintaxe JSON inválida. Verifique vírgulas, aspas e formato.');
+        }
 
         // Handle both array and single object
         const dataArray: Record<string, unknown>[] = Array.isArray(json) ? json : [json];
@@ -86,20 +101,27 @@ export function JsonImportDialog({
 
         // Check for expected fields (using normalized versions)
         const normalizedExpected = expectedFields.map(normalizeKey);
+        // Check first item to validate structure
         const sampleItem = normalizedData[0];
-        const missingFields = normalizedExpected.filter(
-          (field) => !(field in sampleItem)
+
+        // Relaxed validation: Check if AT LEAST ONE of the expected fields exists
+        // This prevents blocking imports just because one optional field is missing
+        const hasSomeValidField = normalizedExpected.some(
+          (field) => field in sampleItem
         );
 
-        if (missingFields.length > 0) {
-          setError(`Campos faltando: ${missingFields.join(', ')}`);
+        if (!hasSomeValidField) {
+          // If strict matching fails, try to show what IS there to help user
+          const foundKeys = Object.keys(sampleItem).join(', ');
+          setError(`Campos não identificados. Encontrado: ${foundKeys}. Esperado: ${expectedFields.join(', ')}`);
           return;
         }
 
         setParsedData(normalizedData);
         setSuccess(true);
       } catch (err) {
-        setError('Erro ao processar o arquivo JSON. Verifique se o formato é válido.');
+        const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+        setError(`Erro ao processar arquivo: ${msg}`);
       }
     };
     reader.readAsText(selectedFile, 'UTF-8');

@@ -1,16 +1,39 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Wallet,
   Receipt,
   TrendingUp,
   PiggyBank,
   ArrowDownRight,
-  Target
+  Filter,
+  X,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { StatCard } from '@/components/StatCard';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+  SheetClose
+} from '@/components/ui/sheet';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   BarChart,
   Bar,
@@ -25,8 +48,9 @@ import {
   Area,
   Line
 } from 'recharts';
-import { format } from 'date-fns';
+import { format, isWithinInterval, parseISO, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { DIMENSOES } from '@/types';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -36,41 +60,75 @@ const formatCurrency = (value: number) => {
 };
 
 export default function Dashboard() {
-  const {
-    atividades,
-    empenhos,
-    getTotalPlanejado,
-    getTotalEmpenhado,
-    getSaldoTotal
-  } = useData();
+  const { atividades, empenhos } = useData();
 
-  const totalPlanejado = getTotalPlanejado();
-  const totalEmpenhado = getTotalEmpenhado();
-  const saldoTotal = getSaldoTotal();
+  // --- Filtros ---
+  const [filterDimensao, setFilterDimensao] = useState('all');
+  const [filterOrigem, setFilterOrigem] = useState('all');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+
+  // Extrair Origens Únicas para o Filtro
+  const origensDisponiveis = useMemo(() => {
+    const origens = new Set<string>();
+    atividades.forEach(a => { if (a.origemRecurso) origens.add(a.origemRecurso); });
+    empenhos.forEach(e => { if (e.origemRecurso) origens.add(e.origemRecurso); });
+    return Array.from(origens).sort();
+  }, [atividades, empenhos]);
+
+  // --- Dados Filtrados ---
+  const filteredData = useMemo(() => {
+    // Filtrar Atividades (Planejado)
+    const filteredAtividades = atividades.filter(a => {
+      const matchDimensao = filterDimensao === 'all' || a.dimensao.includes(filterDimensao);
+      const matchOrigem = filterOrigem === 'all' || a.origemRecurso === filterOrigem;
+      return matchDimensao && matchOrigem;
+    });
+
+    // Filtrar Empenhos (Executado)
+    const filteredEmpenhos = empenhos.filter(e => {
+      const matchDimensao = filterDimensao === 'all' || e.dimensao.includes(filterDimensao);
+      const matchOrigem = filterOrigem === 'all' || e.origemRecurso === filterOrigem;
+
+      let matchDate = true;
+      if (dateStart && dateEnd) {
+        const d = new Date(e.dataEmpenho);
+        const start = startOfDay(parseISO(dateStart));
+        const end = endOfDay(parseISO(dateEnd));
+        matchDate = isWithinInterval(d, { start, end });
+      }
+
+      return matchDimensao && matchOrigem && matchDate && e.status !== 'cancelado';
+    });
+
+    return { atividades: filteredAtividades, empenhos: filteredEmpenhos };
+  }, [atividades, empenhos, filterDimensao, filterOrigem, dateStart, dateEnd]);
+
+  // --- KPI Calculations ---
+  const totalPlanejado = filteredData.atividades.reduce((acc, a) => acc + a.valorTotal, 0);
+  const totalEmpenhado = filteredData.empenhos.reduce((acc, e) => acc + e.valor, 0);
+  const saldoTotal = totalPlanejado - totalEmpenhado;
   const percentualExecutado = totalPlanejado > 0 ? (totalEmpenhado / totalPlanejado) * 100 : 0;
 
-  // Calcular total Liquidado e Pago para o Funil
-  const totalLiquidado = empenhos.reduce((acc, e) => acc + (e.valorLiquidado || 0), 0);
-  const totalPago = empenhos.filter(e => e.status === 'pago').reduce((acc, e) => acc + e.valor, 0);
+  const totalLiquidado = filteredData.empenhos.reduce((acc, e) => acc + (e.valorLiquidado || 0), 0);
+  const totalPago = filteredData.empenhos.filter(e => e.status === 'pago').reduce((acc, e) => acc + e.valor, 0);
 
-  // --- Processamento de Dados ---
+  // --- Gráficos & Tabelas ---
 
-  // 1. Resumo por Origem de Recurso (tabela)
+  // 1. Resumo por Origem
   const dadosPorOrigem = useMemo(() => {
     const map = new Map<string, { planejado: number; empenhado: number }>();
 
-    atividades.forEach((a) => {
+    filteredData.atividades.forEach((a) => {
       const existing = map.get(a.origemRecurso) || { planejado: 0, empenhado: 0 };
       existing.planejado += a.valorTotal;
       map.set(a.origemRecurso, existing);
     });
 
-    empenhos.forEach((e) => {
-      if (e.status !== 'cancelado') {
-        const existing = map.get(e.origemRecurso) || { planejado: 0, empenhado: 0 };
-        existing.empenhado += e.valor;
-        map.set(e.origemRecurso, existing);
-      }
+    filteredData.empenhos.forEach((e) => {
+      const existing = map.get(e.origemRecurso) || { planejado: 0, empenhado: 0 };
+      existing.empenhado += e.valor;
+      map.set(e.origemRecurso, existing);
     });
 
     return Array.from(map.entries())
@@ -81,28 +139,27 @@ export default function Dashboard() {
         saldo: values.planejado - values.empenhado,
         percentual: values.planejado > 0 ? (values.empenhado / values.planejado) * 100 : 0
       }))
+      .filter(item => item.planejado > 0 || item.empenhado > 0)
       .sort((a, b) => b.planejado - a.planejado);
-  }, [atividades, empenhos]);
+  }, [filteredData]);
 
-  // 2. Top 5 Componentes Funcionais
+  // 2. Top 5 Componentes
   const dadosPorComponente = useMemo(() => {
     const map = new Map<string, { planejado: number; empenhado: number }>();
     const normalize = (s: string) => s?.trim() || 'Não Informado';
 
-    atividades.forEach((a) => {
+    filteredData.atividades.forEach((a) => {
       const key = normalize(a.componenteFuncional);
       const existing = map.get(key) || { planejado: 0, empenhado: 0 };
       existing.planejado += a.valorTotal;
       map.set(key, existing);
     });
 
-    empenhos.forEach((e) => {
-      if (e.status !== 'cancelado') {
-        const key = normalize(e.componenteFuncional);
-        const existing = map.get(key) || { planejado: 0, empenhado: 0 };
-        existing.empenhado += e.valor;
-        map.set(key, existing);
-      }
+    filteredData.empenhos.forEach((e) => {
+      const key = normalize(e.componenteFuncional);
+      const existing = map.get(key) || { planejado: 0, empenhado: 0 };
+      existing.empenhado += e.valor;
+      map.set(key, existing);
     });
 
     return Array.from(map.entries())
@@ -112,52 +169,40 @@ export default function Dashboard() {
         empenhado: values.empenhado,
       }))
       .sort((a, b) => b.planejado - a.planejado)
-      .slice(0, 5); // TOP 5
-  }, [atividades, empenhos]);
+      .slice(0, 5);
+  }, [filteredData]);
 
-  // 3. Execução por Natureza de Despesa (Treemap/Barra)
+  // 3. Natureza de Despesa
   const dadosPorNatureza = useMemo(() => {
     const map = new Map<string, number>();
-    empenhos.forEach((e) => {
-      if (e.status !== 'cancelado') {
-        const nature = e.naturezaDespesa.split(' - ')[0];
-        map.set(nature, (map.get(nature) || 0) + e.valor);
-      }
+    filteredData.empenhos.forEach((e) => {
+      const nature = e.naturezaDespesa.split(' - ')[0];
+      map.set(nature, (map.get(nature) || 0) + e.valor);
     });
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 10); // Top 10
-  }, [empenhos]);
+      .slice(0, 10);
+  }, [filteredData]);
 
-  // 4. Evolução Mensal (Timeline)
+  // 4. Evolução Mensal
   const dadosMensais = useMemo(() => {
     const mapAcumulado = new Map<string, number>();
+    const sortedEmpenhos = [...filteredData.empenhos].sort((a, b) => new Date(a.dataEmpenho).getTime() - new Date(b.dataEmpenho).getTime());
 
-    // Sort empenhos by date
-    const sortedEmpenhos = [...empenhos]
-      .filter(e => e.status !== 'cancelado')
-      .sort((a, b) => new Date(a.dataEmpenho).getTime() - new Date(b.dataEmpenho).getTime());
-
-    // Aggregate values by month
     sortedEmpenhos.forEach(e => {
       const mes = format(new Date(e.dataEmpenho), 'MMM/yy', { locale: ptBR });
       mapAcumulado.set(mes, (mapAcumulado.get(mes) || 0) + e.valor);
     });
 
-    // Calculate accumulation
     let acc = 0;
     return Array.from(mapAcumulado.entries()).map(([mes, val]) => {
       acc += val;
-      return {
-        name: mes,
-        empenhado: val,
-        acumulado: acc
-      }
+      return { name: mes, empenhado: val, acumulado: acc };
     });
-  }, [empenhos]);
+  }, [filteredData]);
 
-  // 5. Funil 
+  // 5. Funil
   const dadosFunil = [
     { name: 'Planejado', value: totalPlanejado, fill: '#1e5bb0' },
     { name: 'Empenhado', value: totalEmpenhado, fill: '#f59e0b' },
@@ -165,22 +210,118 @@ export default function Dashboard() {
     { name: 'Pago', value: totalPago, fill: '#22c55e' },
   ];
 
+  const clearFilters = () => {
+    setFilterDimensao('all');
+    setFilterOrigem('all');
+    setDateStart('');
+    setDateEnd('');
+  };
+
+  const hasActiveFilters = filterDimensao !== 'all' || filterOrigem !== 'all' || dateStart !== '' || dateEnd !== '';
+  const activeFiltersCount = [filterDimensao !== 'all', filterOrigem !== 'all', (dateStart !== '' || dateEnd !== '')].filter(Boolean).length;
+
   return (
     <div className="space-y-6 animate-fade-in pb-10">
 
-      {/* Header Stats - KPIs Principais */}
+      {/* Header com Botão de Filtro */}
+      <div className="flex justify-end mb-2">
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="outline" className="gap-2 relative">
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtros
+              {activeFiltersCount > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  {activeFiltersCount}
+                </Badge>
+              )}
+            </Button>
+          </SheetTrigger>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>Filtrar Dashboard</SheetTitle>
+              <SheetDescription>
+                Selecione os critérios para visualizar os dados.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Dimensão</Label>
+                <Select value={filterDimensao} onValueChange={setFilterDimensao}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {DIMENSOES.map((d) => (
+                      <SelectItem key={d.codigo} value={d.codigo}>{d.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Origem de Recurso</Label>
+                <Select value={filterOrigem} onValueChange={setFilterOrigem}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {origensDisponiveis.map((o) => (
+                      <SelectItem key={o} value={o}>{o}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Período de Início</Label>
+                <Input
+                  type="date"
+                  value={dateStart}
+                  onChange={e => setDateStart(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Período Final</Label>
+                <Input
+                  type="date"
+                  value={dateEnd}
+                  onChange={e => setDateEnd(e.target.value)}
+                />
+              </div>
+            </div>
+            <SheetFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
+              {hasActiveFilters && (
+                <Button variant="ghost" onClick={clearFilters} className="w-full">
+                  <X className="mr-2 h-4 w-4" />
+                  Limpar Filtros
+                </Button>
+              )}
+              <SheetClose asChild>
+                <Button type="submit" className="w-full">Aplicar</Button>
+              </SheetClose>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* KPI Cards (rest of the dashboard remains the same) */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {/* ... (Same Stats) */}
         <StatCard
           title="Total Planejado"
           value={formatCurrency(totalPlanejado)}
-          subtitle={`${atividades.length} atividades`}
+          subtitle={`${filteredData.atividades.length} atividades filtradas`}
           icon={Wallet}
           variant="primary"
         />
         <StatCard
           title="Total Empenhado"
           value={formatCurrency(totalEmpenhado)}
-          subtitle={`${empenhos.filter(e => e.status !== 'cancelado').length} empenhos ativos`}
+          subtitle={`${filteredData.empenhos.length} empenhos filtrados`}
           icon={Receipt}
           variant="accent"
         />
@@ -191,21 +332,20 @@ export default function Dashboard() {
           icon={saldoTotal >= 0 ? PiggyBank : ArrowDownRight}
           variant={saldoTotal >= 0 ? 'default' : 'warning'}
         />
-        {/* Restaurado: Execução % */}
         <StatCard
           title="Execução"
           value={`${percentualExecutado.toFixed(1)}%`}
-          subtitle="do orçamento executado"
+          subtitle="do orçamento filtrado"
           icon={TrendingUp}
           variant="default"
         />
       </div>
 
-      {/* Restaurado: Progresso da Execução (Card Largo) */}
+      {/* Progresso Geral */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold">Progresso da Execução Orçamentária</CardTitle>
-          <CardDescription>Visão geral do consumo do orçamento</CardDescription>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg font-semibold">Progresso da Execução</CardTitle>
+          <CardDescription>Visão geral do consumo do orçamento selecionado</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -216,27 +356,16 @@ export default function Dashboard() {
               <span className="font-medium text-primary">{percentualExecutado.toFixed(1)}%</span>
             </div>
             <Progress value={Math.min(percentualExecutado, 100)} className="h-4" />
-            <div className="flex gap-6 text-sm justify-center sm:justify-start">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-primary" />
-                <span className="text-muted-foreground">Empenhado</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-muted" />
-                <span className="text-muted-foreground">Disponível</span>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Row 3: Evolução e Funil */}
+      {/* Gráficos Linha 1 */}
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Evolução Mensal */}
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle>Evolução da Execução</CardTitle>
-            <CardDescription>Acumulado de empenhos ao longo do tempo</CardDescription>
+            <CardDescription>Acumulado de empenhos no período</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
@@ -268,11 +397,10 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Funil de Execução */}
         <Card>
           <CardHeader>
             <CardTitle>Funil de Execução</CardTitle>
-            <CardDescription>Eficiência (Plan -&gt; Emp -&gt; Liq -&gt; Pago)</CardDescription>
+            <CardDescription>Eficiência da despesa</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
@@ -296,13 +424,12 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Row 4: Top Componentes Funcionais e Natureza */}
+      {/* Gráficos Linha 2 */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Top Componentes Funcionais */}
         <Card>
           <CardHeader>
-            <CardTitle>Top 5 Componentes Funcionais</CardTitle>
-            <CardDescription>Maiores orçamentos planejados</CardDescription>
+            <CardTitle>Top 5 Componentes</CardTitle>
+            <CardDescription>Maiores orçamentos</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[350px]">
@@ -321,10 +448,9 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Top Natureza de Despesa */}
         <Card>
           <CardHeader>
-            <CardTitle>Top Naturezas de Despesa</CardTitle>
+            <CardTitle>Top Naturezas</CardTitle>
             <CardDescription>Maiores gastos por categoria</CardDescription>
           </CardHeader>
           <CardContent>
@@ -343,11 +469,11 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Row 5: Resumo Detalhado por Origem */}
+      {/* Tabela de Resumo */}
       <Card>
         <CardHeader>
-          <CardTitle>Resumo por Origem de Recurso</CardTitle>
-          <CardDescription>Detalhamento da execução por fonte</CardDescription>
+          <CardTitle>Detalhamento por Origem</CardTitle>
+          <CardDescription>Execução financeira por fonte de recurso</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">

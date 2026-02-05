@@ -58,19 +58,34 @@ export default function Atividades() {
   const { atividades, addAtividade, updateAtividade, deleteAtividade } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDimensao, setFilterDimensao] = useState('all');
+
+  // Novos Filtros
+  const [filterComponente, setFilterComponente] = useState('all');
+  const [filterOrigem, setFilterOrigem] = useState('all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [selectedAtividade, setSelectedAtividade] = useState<Atividade | null>(null);
   const [formData, setFormData] = useState(initialFormState);
 
+  // Extrair opções únicas para os filtros
+  const componentesUnicos = Array.from(new Set(atividades.map(a => a.componenteFuncional).filter(Boolean))).sort();
+  const origensUnicas = Array.from(new Set(atividades.map(a => a.origemRecurso).filter(Boolean))).sort();
+
   const filteredAtividades = atividades.filter((a) => {
     const matchesSearch =
       a.atividade.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.descricao.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.origemRecurso.toLowerCase().includes(searchTerm.toLowerCase());
+      a.origemRecurso.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      a.componenteFuncional?.toLowerCase().includes(searchTerm.toLowerCase());
+
     const matchesDimensao = filterDimensao === 'all' || a.dimensao.includes(filterDimensao);
-    return matchesSearch && matchesDimensao;
+    const matchesComponente = filterComponente === 'all' || a.componenteFuncional === filterComponente;
+    const matchesOrigem = filterOrigem === 'all' || a.origemRecurso === filterOrigem;
+
+    return matchesSearch && matchesDimensao && matchesComponente && matchesOrigem;
   });
 
   const handleOpenDialog = (atividade?: Atividade) => {
@@ -119,21 +134,16 @@ export default function Atividades() {
 
   const parseValorTotal = (value: string): number => {
     if (!value || value === '0') return 0;
-    // Handle formats like "R$ 36,045.06" or "36045.06" or "36.045,06"
     const cleaned = value
       .replace(/R\$\s*/gi, '')
       .replace(/\s/g, '')
       .trim();
-    // Check if it uses Brazilian format (comma as decimal separator)
     if (cleaned.includes(',') && cleaned.includes('.')) {
-      // Format: 36.045,06 (Brazilian) or 36,045.06 (US)
       const lastComma = cleaned.lastIndexOf(',');
       const lastDot = cleaned.lastIndexOf('.');
       if (lastComma > lastDot) {
-        // Brazilian format: 36.045,06
         return parseFloat(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
       }
-      // US format: 36,045.06
       return parseFloat(cleaned.replace(/,/g, '')) || 0;
     }
     if (cleaned.includes(',')) {
@@ -190,32 +200,92 @@ export default function Atividades() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
+        <CardHeader className="pb-3">
+          <CardTitle>Filtros</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar atividades..."
+                placeholder="Buscar por atividade, processo ou dimensão..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Select value={filterDimensao} onValueChange={setFilterDimensao}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Filtrar dimensão" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as dimensões</SelectItem>
-                {DIMENSOES.map((d) => (
-                  <SelectItem key={d.codigo} value={d.codigo}>
-                    {d.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="w-full sm:w-[200px]">
+              <Select value={filterDimensao} onValueChange={setFilterDimensao}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Dimensão" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as dimensões</SelectItem>
+                  {DIMENSOES.map((d) => (
+                    <SelectItem key={d.codigo} value={d.codigo}>
+                      {d.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              variant={showAdvancedFilters ? "secondary" : "outline"}
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              Filtros Avançados
+            </Button>
           </div>
+
+          {showAdvancedFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg border border-border/50 animate-in slide-in-from-top-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Componente Funcional</label>
+                <Select value={filterComponente} onValueChange={setFilterComponente}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {componentesUnicos.map(comp => (
+                      <SelectItem key={comp} value={comp}>{comp}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Origem de Recurso</label>
+                <Select value={filterOrigem} onValueChange={setFilterOrigem}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {origensUnicas.map(origem => (
+                      <SelectItem key={origem} value={origem}>{origem}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end">
+                <Button
+                  variant="ghost"
+                  className="w-full text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setFilterDimensao('all');
+                    setFilterComponente('all');
+                    setFilterOrigem('all');
+                    setSearchTerm('');
+                  }}
+                >
+                  Limpar Filtros
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

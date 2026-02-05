@@ -22,6 +22,10 @@ export interface Empenho {
   componenteFuncional: string;
   origemRecurso: string;
   naturezaDespesa: string;
+  planoInterno?: string;
+  favorecidoNome?: string;
+  favorecidoDocumento?: string;
+  valorLiquidado?: number;
   dataEmpenho: Date;
   status: 'pendente' | 'liquidado' | 'pago' | 'cancelado';
   atividadeId?: string;
