@@ -13,13 +13,13 @@ interface StatCardProps {
   };
 }
 
-export function StatCard({ 
-  title, 
-  value, 
-  subtitle, 
-  icon: Icon, 
+export function StatCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
   variant = 'default',
-  trend 
+  trend
 }: StatCardProps) {
   const variantStyles = {
     default: 'stat-card',
@@ -37,8 +37,8 @@ export function StatCard({
 
   return (
     <div className={cn(variantStyles[variant], 'animate-fade-in')}>
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
           <p className={cn(
             "text-sm font-medium",
             variant === 'default' ? 'text-muted-foreground' : 'text-white/80'
@@ -77,7 +77,7 @@ export function StatCard({
           )}
         </div>
         <div className={cn(
-          "rounded-xl p-3",
+          "rounded-xl p-3 flex-shrink-0",
           iconBgStyles[variant]
         )}>
           <Icon className="h-6 w-6" />
