@@ -112,17 +112,17 @@
 
 @layer components {
   .stat-card {
-    @apply bg-card rounded-xl p-6 shadow-sm border border-border transition-all duration-200 hover:shadow-md;
+    @apply bg-card rounded-xl p-6 shadow-sm border border-border transition-all duration-200 hover:shadow-md relative overflow-hidden;
   }
 
   .stat-card-primary {
     background: var(--gradient-primary);
-    @apply text-primary-foreground rounded-xl p-6 shadow-lg;
+    @apply text-primary-foreground rounded-xl p-6 shadow-lg relative overflow-hidden;
   }
 
   .stat-card-accent {
     background: var(--gradient-accent);
-    @apply text-accent-foreground rounded-xl p-6 shadow-lg;
+    @apply text-accent-foreground rounded-xl p-6 shadow-lg relative overflow-hidden;
   }
 
   .data-table {
