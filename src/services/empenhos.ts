@@ -49,7 +49,7 @@ export const empenhosService = {
                 valor_liquidado: empenho.valorLiquidado || 0,
                 data_empenho: empenho.dataEmpenho.toISOString(),
                 status: empenho.status,
-                atividade_id: empenho.atividadeId,
+                atividade_id: empenho.atividadeId || null,
             })
             .select()
             .single();
@@ -95,7 +95,7 @@ export const empenhosService = {
         if (empenho.valorLiquidado !== undefined) updates.valor_liquidado = empenho.valorLiquidado;
         if (empenho.dataEmpenho) updates.data_empenho = empenho.dataEmpenho.toISOString();
         if (empenho.status) updates.status = empenho.status;
-        if (empenho.atividadeId !== undefined) updates.atividade_id = empenho.atividadeId;
+        if (empenho.atividadeId !== undefined) updates.atividade_id = empenho.atividadeId || null;
 
         const { error } = await supabase
             .from('empenhos')
